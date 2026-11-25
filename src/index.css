@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-vice-950: #190d2e;
+  --color-vice-900: #291344;
+  --color-vice-800: #3a1d5c;
+  --color-vice-700: #50306f;
+  --color-neon-pink: #ff4fa3;
+  --color-sunset-pink: #ff78b9;
+  --color-electric-purple: #a855f7;
+  --color-tropical-cyan: #45ddeb;
+  --color-warm-orange: #ffad69;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-vice-950 text-zinc-100 antialiased;
+  }
+
+  ::selection {
+    @apply bg-neon-pink/30 text-white;
+  }
+}
+
+.vice-sky {
+  background:
+    radial-gradient(ellipse 55% 38% at 50% 6%, rgba(255, 173, 105, 0.2), transparent 70%),
+    radial-gradient(ellipse 70% 45% at 82% 2%, rgba(255, 79, 163, 0.2), transparent 72%),
+    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(168, 85, 247, 0.18), transparent 70%),
+    linear-gradient(180deg, #291344 0%, #190d2e 58%, #12091f 100%);
+}
+
+.vice-sun {
+  background: linear-gradient(180deg, #ffad69 0%, #ff78b9 48%, #ff4fa3 100%);
+  box-shadow: 0 0 90px 30px rgba(255, 79, 163, 0.12);
+  opacity: 0.16;
+}
+
+.vice-horizon {
+  background: linear-gradient(180deg, transparent, rgba(69, 221, 235, 0.1) 48%, transparent 52%);
+}
+
+.vice-water {
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 13px,
+    rgba(255, 120, 185, 0.08) 14px,
+    transparent 15px
+  );
+  mask-image: linear-gradient(180deg, transparent, black 60%, transparent);
+}
+
+.vice-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.035;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #50306f transparent;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: #50306f;
+  border-radius: 999px;
+}
