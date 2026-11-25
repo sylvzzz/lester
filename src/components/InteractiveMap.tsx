@@ -200,15 +200,9 @@ export function InteractiveMap({ markers, onClose }: Props) {
     return () => container.removeEventListener('wheel', onWheel)
   }, [zoomAt])
 
-  const reset = useCallback(() => {
-    commitView({ x: 0, y: 0 }, DEFAULT_SCALE)
-    setSelected(null)
-  }, [commitView])
-
-  const focus = useCallback(
-    (location: MapMarker) => {
+  const centerOn = useCallback(
+    (location: MapMarker, nextScale: number, select = true) => {
       const size = layerSizeRef.current
-      const nextScale = Math.max(scaleRef.current, 2.4)
       commitView(
         {
           x: (size.width / 2 - (location.x / 100) * size.width) * nextScale,
@@ -216,10 +210,31 @@ export function InteractiveMap({ markers, onClose }: Props) {
         },
         nextScale,
       )
-      setSelected(location)
+      if (select) setSelected(location)
     },
     [commitView],
   )
+
+  const focus = useCallback(
+    (location: MapMarker) => centerOn(location, Math.max(scaleRef.current, 2.4)),
+    [centerOn],
+  )
+
+  const reset = useCallback(() => {
+    const primary = markers[0]
+    if (primary) centerOn(primary, DEFAULT_SCALE, false)
+    else {
+      commitView({ x: 0, y: 0 }, DEFAULT_SCALE)
+      setSelected(null)
+    }
+  }, [centerOn, commitView, markers])
+
+  const initialFocusRef = useRef(false)
+  useEffect(() => {
+    if (initialFocusRef.current || !layerSize.width || markers.length === 0) return
+    initialFocusRef.current = true
+    centerOn(markers[0], 2.4)
+  }, [centerOn, layerSize.width, markers])
 
   const selectLocation = useCallback((location: MapMarker) => setSelected(location), [])
 

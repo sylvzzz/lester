@@ -2,6 +2,8 @@
 
 A single-page chat assistant for GTA VI. React frontend, served by one Cloudflare Worker that also proxies Groq (LLM) and Tavily (web search). No database, no auth, no extra hosting.
 
+![Demo](demo.png)
+
 ## How it works
 
 1. The browser sends the conversation to `POST /api/chat` on the same Worker that serves the app.
