@@ -1,6 +1,6 @@
 # LESTER — GTA VI Research Terminal
 
-A single-page chat assistant for GTA VI. React frontend, served by one Cloudflare Worker that also proxies Groq (LLM) and Tavily (web search). No database, no auth, no extra hosting.
+A chat agent for GTA VI, for those who know the "creepy uncle lester" from GTA V, its basicly a AI served from Groq (LLM) connected to Tavily for web searching cars, money methods, overall improving your GTA VI experience, he shows you locations via interactive game map, images, sources and much more.
 
 ![Demo](demo.png)
 
