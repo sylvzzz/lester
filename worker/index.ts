@@ -522,14 +522,6 @@ async function handleTile(request: Request, zRaw: string, yRaw: string, xRaw: st
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url)
-    if (pathname === '/api/debug') {
-      return json({
-        keys: Object.keys(env),
-        groq: Boolean(env.GROQ_API_KEY),
-        tavily: Boolean(env.TAVILY_API_KEY),
-        model: env.GROQ_MODEL ?? null,
-      })
-    }
     if (pathname === '/api/chat') {
       return handleChat(request, env)
     }

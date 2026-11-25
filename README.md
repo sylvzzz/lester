@@ -4,6 +4,7 @@ A chat agent for GTA VI, for those who know the "creepy uncle lester" from GTA V
 
 ![Demo](demo.png)
 
+
 ## How it works
 
 1. The browser sends the conversation to `POST /api/chat` on the same Worker that serves the app.
