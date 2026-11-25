@@ -1,4 +1,4 @@
-# LESTER — GTA VI Research Terminal
+# LESTER — GTA VI AI Research Agent
 
 A chat agent for GTA VI, for those who know the "creepy uncle lester" from GTA V, its basicly a AI served from Groq (LLM) connected to Tavily for web searching cars, money methods, overall improving your GTA VI experience, he shows you locations via interactive game map, images, sources and much more.
 
