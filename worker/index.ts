@@ -1,4 +1,5 @@
 import type { ChatImage, ChatMessage, ChatResponse, MapMarker, Source } from '../types.ts'
+import { isKnownTile, MAX_ZOOM, MIN_ZOOM } from '../src/lib/mapTiles.ts'
 import { findMapLocation, toMapMarker, toMapMarkerFromLocation } from './mapPins.ts'
 
 interface Env {
@@ -23,6 +24,7 @@ const MAX_IMAGES = 4
 const GROQ_BUDGET_MS = 9_000
 const GROQ_RETRY_DELAYS = [600, 1_200, 1_800]
 const RETRY_ERROR = 'Something went wrong, please try again ...'
+const TILE_UPSTREAM = 'https://maps.gtadb.org/tiles/6/day'
 
 const SYSTEM_PROMPT = `You are Lester, a research assistant who specializes exclusively in Grand Theft Auto VI. You sound like Lester Crest: intelligent, analytical, dry and slightly sarcastic, but always concise and direct. Never over-explain.
 
@@ -477,10 +479,55 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function handleTile(request: Request, zRaw: string, yRaw: string, xRaw: string) {
+  if (request.method !== 'GET') {
+    return new Response('Method not allowed', { status: 405 })
+  }
+
+  const z = Number(zRaw)
+  const y = Number(yRaw)
+  const x = Number(xRaw)
+  if (
+    !Number.isInteger(z) ||
+    !Number.isInteger(y) ||
+    !Number.isInteger(x) ||
+    z < MIN_ZOOM ||
+    z > MAX_ZOOM ||
+    !isKnownTile(z, x, y)
+  ) {
+    return new Response(null, { status: 204 })
+  }
+
+  try {
+    const response = await fetch(`${TILE_UPSTREAM}/${z}/${z},${y},${x}.jpg`, {
+      headers: {
+        'user-agent': 'Lester/1.0 (+https://github.com/rolux/gtadb.org)',
+        referer: 'https://map.gtadb.org/',
+      },
+    })
+    if (!response.ok || !response.body) return new Response(null, { status: 204 })
+    return new Response(response.body, {
+      status: 200,
+      headers: {
+        'content-type': response.headers.get('content-type') ?? 'image/jpeg',
+        'cache-control': 'public, max-age=31536000, immutable',
+        'x-content-type-options': 'nosniff',
+      },
+    })
+  } catch {
+    return new Response(null, { status: 204 })
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (new URL(request.url).pathname === '/api/chat') {
+    const { pathname } = new URL(request.url)
+    if (pathname === '/api/chat') {
       return handleChat(request, env)
+    }
+    const tileMatch = pathname.match(/^\/api\/tile\/(\d+)\/(\d+)\/(\d+)$/)
+    if (tileMatch) {
+      return handleTile(request, tileMatch[1], tileMatch[2], tileMatch[3])
     }
     if (request.method === 'GET' && request.headers.get('accept')?.includes('text/html')) {
       return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), request))

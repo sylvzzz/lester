@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { cropTileSize, markerToTile, tileBounds } from '../src/lib/mapTiles.ts'
 import worker from '../worker/index.ts'
 
 const env = { GROQ_API_KEY: 'groq-test-key', TAVILY_API_KEY: 'tavily-test-key' }
@@ -68,6 +69,10 @@ globalThis.fetch = async (url, init) => {
 
   if (target === 'https://example.com/vice-city-map.jpg') {
     return new Response('image', { headers: { 'content-type': 'image/jpeg' } })
+  }
+
+  if (target.startsWith('https://maps.gtadb.org/tiles/')) {
+    return new Response('tile', { headers: { 'content-type': 'image/jpeg' } })
   }
 
   throw new Error(`Unexpected fetch to ${target}`)
@@ -184,6 +189,22 @@ assert.deepEqual(directData.sources, [])
 assert.deepEqual(directData.images, [])
 assert.equal(directData.markers, undefined)
 assert.equal(calls.filter((call) => call.target.includes('api.tavily.com')).length, 0)
+
+assert.deepEqual(cropTileSize(0), { width: 768, height: 1024 })
+assert.deepEqual(tileBounds(6), { maxX: 191, maxY: 255 })
+assert.deepEqual(markerToTile(72.4, 41.4, 6), { x: 139, y: 105 })
+
+calls.length = 0
+const tile = await worker.fetch(new Request('https://example.com/api/tile/6/105/139'), env)
+assert.equal(tile.status, 200)
+assert.equal(tile.headers.get('content-type'), 'image/jpeg')
+assert.equal(tile.headers.get('cache-control'), 'public, max-age=31536000, immutable')
+assert.equal(calls.length, 1)
+assert.equal(calls[0].target, 'https://maps.gtadb.org/tiles/6/day/6/6,105,139.jpg')
+assert.equal(calls[0].init.headers.referer, 'https://map.gtadb.org/')
+
+const missingTile = await worker.fetch(new Request('https://example.com/api/tile/6/999/999'), env)
+assert.equal(missingTile.status, 204)
 
 assert.equal(
   (await worker.fetch(new Request('https://example.com/index.html'), env)).status,

@@ -8,6 +8,14 @@ import {
   MAP_CATEGORIES,
   MAP_SOURCE,
 } from '../lib/mapCategories.ts'
+import {
+  cropTileSize,
+  isKnownTile,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  TILE_SIZE,
+  tileBounds,
+} from '../lib/mapTiles.ts'
 import { CategoryIcon, LocationPinIcon } from './CategoryIcon.tsx'
 
 type Props = {
@@ -16,11 +24,10 @@ type Props = {
 }
 
 type Offset = { x: number; y: number }
+type Viewport = { width: number; height: number }
 
-const DEFAULT_SCALE = 1.25
-const FOCUS_SCALE = 4.6
-const MIN_SCALE = 1
-const MAX_SCALE = 5
+const DEFAULT_ZOOM = 4
+const FOCUS_ZOOM = 6
 
 function asMarker(location: MapLocation): MapMarker {
   return {
@@ -30,15 +37,58 @@ function asMarker(location: MapLocation): MapMarker {
   }
 }
 
+const TileLayer = memo(function TileLayer({
+  zoom,
+  offset,
+  viewport,
+}: {
+  zoom: number
+  offset: Offset
+  viewport: Viewport
+}) {
+  if (!viewport.width || !viewport.height) return null
+
+  const size = cropTileSize(zoom)
+  const { maxX, maxY } = tileBounds(zoom)
+  const left = size.width / 2 - offset.x - viewport.width / 2
+  const top = size.height / 2 - offset.y - viewport.height / 2
+  const x0 = Math.max(0, Math.floor(left / TILE_SIZE))
+  const y0 = Math.max(0, Math.floor(top / TILE_SIZE))
+  const x1 = Math.min(maxX, Math.floor((left + viewport.width) / TILE_SIZE))
+  const y1 = Math.min(maxY, Math.floor((top + viewport.height) / TILE_SIZE))
+  const tiles = []
+
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      if (!isKnownTile(zoom, x, y)) continue
+      tiles.push(
+        <img
+          key={`${zoom}-${y}-${x}`}
+          src={`/api/tile/${zoom}/${y}/${x}`}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          decoding="async"
+          className="pointer-events-none absolute"
+          style={{ left: x * TILE_SIZE, top: y * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE }}
+          onError={(event) => {
+            event.currentTarget.style.visibility = 'hidden'
+          }}
+        />,
+      )
+    }
+  }
+
+  return <>{tiles}</>
+})
+
 const MarkerLayer = memo(function MarkerLayer({
   locations,
-  scale,
   selectedId,
   primaryId,
   onSelect,
 }: {
   locations: MapMarker[]
-  scale: number
   selectedId?: string
   primaryId?: string
   onSelect: (location: MapMarker) => void
@@ -49,7 +99,6 @@ const MarkerLayer = memo(function MarkerLayer({
         const config = MAP_CATEGORIES[location.category]
         const isSelected = selectedId === location.id
         const isPrimary = primaryId === location.id
-        const markerTransform = `translate(-50%, -50%) scale(${1 / scale})`
 
         if (isPrimary) {
           return (
@@ -62,12 +111,8 @@ const MarkerLayer = memo(function MarkerLayer({
                 event.stopPropagation()
                 onSelect(location)
               }}
-              className="absolute z-30 grid h-9 w-9 place-items-center rounded-full bg-[#ff3b5c] text-white ring-4 ring-[#ff3b5c]/30 shadow-[0_0_22px_rgba(255,59,92,0.9)]"
-              style={{
-                left: `${location.x}%`,
-                top: `${location.y}%`,
-                transform: markerTransform,
-              }}
+              className="absolute z-30 grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-[#ff3b5c] text-white ring-4 ring-[#ff3b5c]/30 shadow-[0_0_22px_rgba(255,59,92,0.9)]"
+              style={{ left: `${location.x}%`, top: `${location.y}%` }}
             >
               <span className="absolute inset-0 animate-ping rounded-full bg-[#ff3b5c]/40" />
               <LocationPinIcon className="relative h-5 w-5" />
@@ -85,13 +130,12 @@ const MarkerLayer = memo(function MarkerLayer({
               event.stopPropagation()
               onSelect(location)
             }}
-            className={`absolute z-10 grid h-6 w-6 place-items-center rounded-full border transition hover:opacity-100 ${
+            className={`absolute z-10 grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border transition hover:opacity-100 ${
               isSelected ? 'ring-2 ring-white' : 'border-white/30'
             } ${primaryId ? 'opacity-35' : ''}`}
             style={{
               left: `${location.x}%`,
               top: `${location.y}%`,
-              transform: markerTransform,
               backgroundColor: config.color,
               color: '#0a0610',
               borderStyle: location.confidence === 'rumour' ? 'dashed' : 'solid',
@@ -107,21 +151,20 @@ const MarkerLayer = memo(function MarkerLayer({
 })
 
 export function InteractiveMap({ markers, onClose }: Props) {
-  const [scale, setScale] = useState(DEFAULT_SCALE)
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 })
+  const [viewport, setViewport] = useState<Viewport>({ width: 0, height: 0 })
   const [selected, setSelected] = useState<MapMarker | null>(null)
   const [query, setQuery] = useState('')
   const [activeCategories, setActiveCategories] = useState<Set<MapCategory>>(
     () => new Set(CATEGORY_ORDER),
   )
-  const [layerSize, setLayerSize] = useState({ width: 0, height: 0 })
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const layerRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
-  const scaleRef = useRef(DEFAULT_SCALE)
+  const zoomRef = useRef(DEFAULT_ZOOM)
   const offsetRef = useRef<Offset>({ x: 0, y: 0 })
-  const layerSizeRef = useRef({ width: 0, height: 0 })
+  const lastWheelRef = useRef(0)
 
   useEffect(() => {
     const previous = document.body.style.overflow
@@ -136,86 +179,75 @@ export function InteractiveMap({ markers, onClose }: Props) {
     }
   }, [onClose])
 
-  const applyTransform = useCallback((nextOffset: Offset, nextScale: number) => {
-    const layer = layerRef.current
-    if (!layer) return
-    layer.style.transform = `translate(-50%, -50%) translate3d(${nextOffset.x}px, ${nextOffset.y}px, 0) scale(${nextScale})`
-  }, [])
-
   useLayoutEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const update = () => {
       const { width, height } = container.getBoundingClientRect()
-      const mapWidth = Math.max(1, Math.min(width, (height * 3) / 4))
-      const size = { width: mapWidth, height: (mapWidth * 4) / 3 }
-      layerSizeRef.current = size
-      setLayerSize(size)
-      applyTransform(offsetRef.current, scaleRef.current)
+      setViewport({ width, height })
     }
 
     update()
     const observer = new ResizeObserver(update)
     observer.observe(container)
     return () => observer.disconnect()
-  }, [applyTransform])
-
-  const clampOffset = useCallback((next: Offset, nextScale: number): Offset => {
-    const container = containerRef.current?.getBoundingClientRect()
-    const size = layerSizeRef.current
-    if (!container || !size.width) return next
-    const maxX = Math.max(0, (size.width * nextScale - container.width) / 2) + 48
-    const maxY = Math.max(0, (size.height * nextScale - container.height) / 2) + 48
-    return {
-      x: Math.max(-maxX, Math.min(maxX, next.x)),
-      y: Math.max(-maxY, Math.min(maxY, next.y)),
-    }
   }, [])
 
-  const applyView = useCallback(
-    (nextOffset: Offset, nextScale: number) => {
-      const boundedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale))
-      const boundedOffset = clampOffset(nextOffset, boundedScale)
-      offsetRef.current = boundedOffset
-      scaleRef.current = boundedScale
-      applyTransform(boundedOffset, boundedScale)
+  const clampOffset = useCallback(
+    (next: Offset, nextZoom: number): Offset => {
+      if (!viewport.width || !viewport.height) return next
+      const size = cropTileSize(nextZoom)
+      const maxX = Math.max(0, (size.width - viewport.width) / 2) + 48
+      const maxY = Math.max(0, (size.height - viewport.height) / 2) + 48
+      return {
+        x: Math.max(-maxX, Math.min(maxX, next.x)),
+        y: Math.max(-maxY, Math.min(maxY, next.y)),
+      }
     },
-    [applyTransform, clampOffset],
+    [viewport],
   )
 
-  const commitView = useCallback(
-    (nextOffset: Offset, nextScale: number) => {
-      applyView(nextOffset, nextScale)
-      setOffset(offsetRef.current)
-      setScale(scaleRef.current)
+  const applyView = useCallback(
+    (nextOffset: Offset, nextZoom: number) => {
+      const boundedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom))
+      const boundedOffset = clampOffset(nextOffset, boundedZoom)
+      zoomRef.current = boundedZoom
+      offsetRef.current = boundedOffset
+      setZoom(boundedZoom)
+      setOffset(boundedOffset)
     },
-    [applyView],
+    [clampOffset],
   )
 
   const zoomAt = useCallback(
-    (factor: number, localX: number, localY: number) => {
-      const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scaleRef.current * factor))
-      const cursorX = localX - rect.width / 2
-      const cursorY = localY - rect.height / 2
-      const mapX = (cursorX - offsetRef.current.x) / scaleRef.current
-      const mapY = (cursorY - offsetRef.current.y) / scaleRef.current
-      commitView(
-        { x: cursorX - mapX * nextScale, y: cursorY - mapY * nextScale },
-        nextScale,
+    (step: number, localX: number, localY: number) => {
+      if (!viewport.width || !viewport.height) return
+      const current = zoomRef.current
+      const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, current + step))
+      if (next === current) return
+
+      const size = cropTileSize(current)
+      const nextSize = cropTileSize(next)
+      const ratio = nextSize.width / size.width
+      const cursorX = localX - viewport.width / 2
+      const cursorY = localY - viewport.height / 2
+      const mapX = cursorX - offsetRef.current.x + size.width / 2
+      const mapY = cursorY - offsetRef.current.y + size.height / 2
+      applyView(
+        {
+          x: cursorX - mapX * ratio + nextSize.width / 2,
+          y: cursorY - mapY * ratio + nextSize.height / 2,
+        },
+        next,
       )
     },
-    [commitView],
+    [applyView, viewport],
   )
 
   const zoomFromCenter = useCallback(
-    (factor: number) => {
-      const rect = containerRef.current?.getBoundingClientRect()
-      zoomAt(factor, rect ? rect.width / 2 : 0, rect ? rect.height / 2 : 0)
-    },
-    [zoomAt],
+    (step: number) => zoomAt(step, viewport.width / 2, viewport.height / 2),
+    [viewport, zoomAt],
   )
 
   useEffect(() => {
@@ -223,48 +255,51 @@ export function InteractiveMap({ markers, onClose }: Props) {
     if (!container) return
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
+      const now = Date.now()
+      if (now - lastWheelRef.current < 180) return
+      lastWheelRef.current = now
       const rect = container.getBoundingClientRect()
-      zoomAt(event.deltaY < 0 ? 1.12 : 0.89, event.clientX - rect.left, event.clientY - rect.top)
+      zoomAt(event.deltaY < 0 ? 1 : -1, event.clientX - rect.left, event.clientY - rect.top)
     }
     container.addEventListener('wheel', onWheel, { passive: false })
     return () => container.removeEventListener('wheel', onWheel)
   }, [zoomAt])
 
-  const centerOn = useCallback(
-    (location: MapMarker, nextScale: number, select = true) => {
-      const size = layerSizeRef.current
-      commitView(
+  const focusOn = useCallback(
+    (location: MapMarker, targetZoom = FOCUS_ZOOM, select = true) => {
+      const size = cropTileSize(targetZoom)
+      applyView(
         {
-          x: (size.width / 2 - (location.x / 100) * size.width) * nextScale,
-          y: (size.height / 2 - (location.y / 100) * size.height) * nextScale,
+          x: size.width / 2 - (location.x / 100) * size.width,
+          y: size.height / 2 - (location.y / 100) * size.height,
         },
-        nextScale,
+        targetZoom,
       )
       if (select) setSelected(location)
     },
-    [commitView],
+    [applyView],
   )
 
   const focus = useCallback(
-    (location: MapMarker) => centerOn(location, Math.max(scaleRef.current, FOCUS_SCALE)),
-    [centerOn],
+    (location: MapMarker) => focusOn(location),
+    [focusOn],
   )
 
   const reset = useCallback(() => {
     const primary = markers[0]
-    if (primary) centerOn(primary, DEFAULT_SCALE, false)
+    if (primary) focusOn(primary, DEFAULT_ZOOM, false)
     else {
-      commitView({ x: 0, y: 0 }, DEFAULT_SCALE)
+      applyView({ x: 0, y: 0 }, DEFAULT_ZOOM)
       setSelected(null)
     }
-  }, [centerOn, commitView, markers])
+  }, [applyView, focusOn, markers])
 
   const initialFocusRef = useRef(false)
   useEffect(() => {
-    if (initialFocusRef.current || !layerSize.width || markers.length === 0) return
+    if (initialFocusRef.current || !viewport.width || markers.length === 0) return
     initialFocusRef.current = true
-    centerOn(markers[0], FOCUS_SCALE)
-  }, [centerOn, layerSize.width, markers])
+    focusOn(markers[0])
+  }, [focusOn, markers, viewport.width])
 
   const selectLocation = useCallback((location: MapMarker) => setSelected(location), [])
 
@@ -319,7 +354,7 @@ export function InteractiveMap({ markers, onClose }: Props) {
         x: drag.tx + event.clientX - drag.x,
         y: drag.ty + event.clientY - drag.y,
       },
-      scaleRef.current,
+      zoomRef.current,
     )
   }
 
@@ -329,8 +364,10 @@ export function InteractiveMap({ markers, onClose }: Props) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
-    if (wasDragging) commitView(offsetRef.current, scaleRef.current)
+    if (wasDragging) applyView(offsetRef.current, zoomRef.current)
   }
+
+  const size = cropTileSize(zoom)
 
   return (
     <div
@@ -364,26 +401,27 @@ export function InteractiveMap({ markers, onClose }: Props) {
           className="relative min-h-[55vh] flex-1 touch-none select-none overflow-hidden bg-[#0b0512]"
         >
           <div
-            ref={layerRef}
             className="absolute left-1/2 top-1/2"
             style={{
-              width: layerSize.width,
-              height: layerSize.height,
-              transform: `translate(-50%, -50%) translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+              width: size.width,
+              height: size.height,
+              transform: `translate(-50%, -50%) translate3d(${offset.x}px, ${offset.y}px, 0)`,
               transformOrigin: 'center center',
               willChange: 'transform',
             }}
           >
             <img
               src="/gta6-map.jpg"
-              alt="Mapa in-game de Leonida"
+              alt=""
+              aria-hidden="true"
               draggable={false}
-              className="pointer-events-none h-full w-full object-fill"
+              className="pointer-events-none absolute inset-0 h-full w-full object-fill"
             />
+
+            <TileLayer zoom={zoom} offset={offset} viewport={viewport} />
 
             <MarkerLayer
               locations={visible}
-              scale={scale}
               selectedId={selected?.id}
               primaryId={markers[0]?.id}
               onSelect={selectLocation}
@@ -391,13 +429,13 @@ export function InteractiveMap({ markers, onClose }: Props) {
           </div>
 
           <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-lg border border-fuchsia-500/20 bg-vice-950/90 px-2.5 py-1.5 text-[10px] uppercase tracking-widest text-fuchsia-200 backdrop-blur">
-            {visible.length} pontos · {Math.round(scale * 100)}%
+            {visible.length} pontos · Z{zoom}/{MAX_ZOOM}
           </div>
 
           <div className="absolute right-3 top-3 z-20 flex flex-col gap-1">
             <button
               type="button"
-              onClick={() => zoomFromCenter(1.25)}
+              onClick={() => zoomFromCenter(1)}
               aria-label="Aproximar"
               className="grid h-9 w-9 place-items-center rounded-lg border border-fuchsia-500/30 bg-vice-950/90 text-lg text-white backdrop-blur transition hover:bg-fuchsia-500/20"
             >
@@ -405,7 +443,7 @@ export function InteractiveMap({ markers, onClose }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => zoomFromCenter(0.8)}
+              onClick={() => zoomFromCenter(-1)}
               aria-label="Afastar"
               className="grid h-9 w-9 place-items-center rounded-lg border border-fuchsia-500/30 bg-vice-950/90 text-lg text-white backdrop-blur transition hover:bg-fuchsia-500/20"
             >
