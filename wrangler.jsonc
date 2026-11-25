@@ -10,8 +10,5 @@
   },
   "vars": {
     "GROQ_MODEL": "openai/gpt-oss-120b"
-  },
-  "secrets": {
-    "required": ["GROQ_API_KEY", "TAVILY_API_KEY"]
   }
 }
