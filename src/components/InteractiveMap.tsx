@@ -8,7 +8,7 @@ import {
   MAP_CATEGORIES,
   MAP_SOURCE,
 } from '../lib/mapCategories.ts'
-import { CategoryIcon } from './CategoryIcon.tsx'
+import { CategoryIcon, LocationPinIcon } from './CategoryIcon.tsx'
 
 type Props = {
   markers: MapMarker[]
@@ -18,6 +18,7 @@ type Props = {
 type Offset = { x: number; y: number }
 
 const DEFAULT_SCALE = 1.25
+const FOCUS_SCALE = 4.6
 const MIN_SCALE = 1
 const MAX_SCALE = 5
 
@@ -33,11 +34,13 @@ const MarkerLayer = memo(function MarkerLayer({
   locations,
   scale,
   selectedId,
+  primaryId,
   onSelect,
 }: {
   locations: MapMarker[]
   scale: number
   selectedId?: string
+  primaryId?: string
   onSelect: (location: MapMarker) => void
 }) {
   return (
@@ -45,6 +48,33 @@ const MarkerLayer = memo(function MarkerLayer({
       {locations.map((location) => {
         const config = MAP_CATEGORIES[location.category]
         const isSelected = selectedId === location.id
+        const isPrimary = primaryId === location.id
+        const markerTransform = `translate(-50%, -50%) scale(${1 / scale})`
+
+        if (isPrimary) {
+          return (
+            <button
+              key={location.id}
+              type="button"
+              aria-label={location.name}
+              title={location.name}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelect(location)
+              }}
+              className="absolute z-30 grid h-9 w-9 place-items-center rounded-full bg-[#ff3b5c] text-white ring-4 ring-[#ff3b5c]/30 shadow-[0_0_22px_rgba(255,59,92,0.9)]"
+              style={{
+                left: `${location.x}%`,
+                top: `${location.y}%`,
+                transform: markerTransform,
+              }}
+            >
+              <span className="absolute inset-0 animate-ping rounded-full bg-[#ff3b5c]/40" />
+              <LocationPinIcon className="relative h-5 w-5" />
+            </button>
+          )
+        }
+
         return (
           <button
             key={location.id}
@@ -55,13 +85,13 @@ const MarkerLayer = memo(function MarkerLayer({
               event.stopPropagation()
               onSelect(location)
             }}
-            className={`absolute z-10 grid h-6 w-6 place-items-center rounded-full border transition ${
+            className={`absolute z-10 grid h-6 w-6 place-items-center rounded-full border transition hover:opacity-100 ${
               isSelected ? 'ring-2 ring-white' : 'border-white/30'
-            }`}
+            } ${primaryId ? 'opacity-35' : ''}`}
             style={{
               left: `${location.x}%`,
               top: `${location.y}%`,
-              transform: `translate(-50%, -50%) scale(${1 / scale})`,
+              transform: markerTransform,
               backgroundColor: config.color,
               color: '#0a0610',
               borderStyle: location.confidence === 'rumour' ? 'dashed' : 'solid',
@@ -216,7 +246,7 @@ export function InteractiveMap({ markers, onClose }: Props) {
   )
 
   const focus = useCallback(
-    (location: MapMarker) => centerOn(location, Math.max(scaleRef.current, 2.4)),
+    (location: MapMarker) => centerOn(location, Math.max(scaleRef.current, FOCUS_SCALE)),
     [centerOn],
   )
 
@@ -233,7 +263,7 @@ export function InteractiveMap({ markers, onClose }: Props) {
   useEffect(() => {
     if (initialFocusRef.current || !layerSize.width || markers.length === 0) return
     initialFocusRef.current = true
-    centerOn(markers[0], 2.4)
+    centerOn(markers[0], FOCUS_SCALE)
   }, [centerOn, layerSize.width, markers])
 
   const selectLocation = useCallback((location: MapMarker) => setSelected(location), [])
@@ -355,6 +385,7 @@ export function InteractiveMap({ markers, onClose }: Props) {
               locations={visible}
               scale={scale}
               selectedId={selected?.id}
+              primaryId={markers[0]?.id}
               onSelect={selectLocation}
             />
           </div>
@@ -447,6 +478,12 @@ export function InteractiveMap({ markers, onClose }: Props) {
                 )
               })}
             </div>
+            {markers[0] && (
+              <p className="mt-1 flex items-center gap-1 text-[9px] text-[#ff8da1]">
+                <LocationPinIcon className="h-3 w-3" />
+                Vermelho = local indicado pela Lester
+              </p>
+            )}
             <p className="mt-1 text-[9px] text-white/35">
               Tracejado = rumor · mapa comunitário, não oficial Rockstar Games
             </p>

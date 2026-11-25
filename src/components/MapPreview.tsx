@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import type { MapMarker } from '../../types.ts'
 import { CONFIDENCE_LABELS, MAP_CATEGORIES } from '../lib/mapCategories.ts'
-import { CategoryIcon } from './CategoryIcon.tsx'
+import { CategoryIcon, LocationPinIcon } from './CategoryIcon.tsx'
 
 const InteractiveMap = lazy(() =>
   import('./InteractiveMap.tsx').then((module) => ({ default: module.InteractiveMap })),
@@ -39,15 +39,36 @@ export function MapPreview({ markers }: Props) {
 
               {markers.map((marker) => {
                 const config = MAP_CATEGORIES[marker.category]
+                const isPrimary = marker.id === primary?.id
+                const markerTransform = `translate(-50%, -50%) scale(${primary ? 1 / PREVIEW_ZOOM : 1})`
+
+                if (isPrimary) {
+                  return (
+                    <span
+                      key={marker.id}
+                      title={marker.name}
+                      className="absolute z-20 grid h-9 w-9 place-items-center rounded-full bg-[#ff3b5c] text-white ring-4 ring-[#ff3b5c]/30 shadow-[0_0_18px_rgba(255,59,92,0.9)]"
+                      style={{
+                        left: `${marker.x}%`,
+                        top: `${marker.y}%`,
+                        transform: markerTransform,
+                      }}
+                    >
+                      <span className="absolute inset-0 animate-ping rounded-full bg-[#ff3b5c]/40" />
+                      <LocationPinIcon className="relative h-5 w-5" />
+                    </span>
+                  )
+                }
+
                 return (
                   <span
                     key={marker.id}
                     title={marker.name}
-                    className="absolute grid h-6 w-6 place-items-center rounded-full border border-white/40"
+                    className="absolute grid h-6 w-6 place-items-center rounded-full border border-white/40 opacity-50"
                     style={{
                       left: `${marker.x}%`,
                       top: `${marker.y}%`,
-                      transform: `translate(-50%, -50%) scale(${primary ? 1 / PREVIEW_ZOOM : 1})`,
+                      transform: markerTransform,
                       backgroundColor: config.color,
                       color: '#0a0610',
                       borderStyle: marker.confidence === 'rumour' ? 'dashed' : 'solid',
